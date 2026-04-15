@@ -124,12 +124,6 @@ export default function Login() {
               {!loading && <ArrowRight size={20} className="transition-transform group-hover:translate-x-1" />}
             </motion.button>
           </form>
-
-          <motion.div variants={itemVariants} className="mt-8">
-            <p className="text-sm text-zinc-500 text-center">
-              Demo credentials: <span className="font-medium text-zinc-900">admin@example.com</span> / <span className="font-medium text-zinc-900">admin123</span>
-            </p>
-          </motion.div>
         </motion.div>
       </div>
 
