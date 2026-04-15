@@ -108,28 +108,30 @@ class ResetPasswordRequest(BaseModel):
 async def check_brute_force(identifier: str) -> None:
     attempt = await db.login_attempts.find_one({"identifier": identifier})
     if attempt:
-        if attempt["count"] >= 5:
-            lockout_time = attempt["locked_until"]
-            if lockout_time and lockout_time > datetime.now(timezone.utc):
-                raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
-            else:
-                await db.login_attempts.delete_one({"identifier": identifier})
+        lockout_time = attempt.get("locked_until")
+        current_time = datetime.now(timezone.utc).replace(tzinfo=None)
+        if lockout_time and lockout_time > current_time:
+            raise HTTPException(status_code=429, detail="Too many login attempts. Please try again later.")
+        elif lockout_time and lockout_time <= current_time:
+            # Lockout expired, reset counter
+            await db.login_attempts.delete_one({"identifier": identifier})
 
 async def record_failed_login(identifier: str) -> None:
     attempt = await db.login_attempts.find_one({"identifier": identifier})
+    current_time = datetime.now(timezone.utc).replace(tzinfo=None)  # Store as naive datetime for MongoDB
     if attempt:
         count = attempt["count"] + 1
-        locked_until = datetime.now(timezone.utc) + timedelta(minutes=15) if count >= 5 else None
+        locked_until = (datetime.now(timezone.utc) + timedelta(minutes=15)).replace(tzinfo=None) if count >= 5 else None
         await db.login_attempts.update_one(
             {"identifier": identifier},
-            {"$set": {"count": count, "locked_until": locked_until, "last_attempt": datetime.now(timezone.utc)}}
+            {"$set": {"count": count, "locked_until": locked_until, "last_attempt": current_time}}
         )
     else:
         await db.login_attempts.insert_one({
             "identifier": identifier,
             "count": 1,
             "locked_until": None,
-            "last_attempt": datetime.now(timezone.utc)
+            "last_attempt": current_time
         })
 
 async def clear_failed_login(identifier: str) -> None:
@@ -171,7 +173,7 @@ async def register(request: RegisterRequest, response: Response):
 @api_router.post("/auth/login", response_model=UserResponse)
 async def login(request: LoginRequest, response: Response, req: Request):
     email = request.email.lower()
-    identifier = f"{req.client.host}:{email}"
+    identifier = email  # Use email only for consistent brute force tracking
     
     await check_brute_force(identifier)
     
