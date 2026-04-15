@@ -1,0 +1,53 @@
+{
+  "timestamp": "2026-04-15T04:40:53.792463",
+  "total_tests": 9,
+  "passed_tests": 8,
+  "success_rate": "88.9%",
+  "results": [
+    {
+      "test": "API Health Check",
+      "success": true,
+      "details": "Status: 401"
+    },
+    {
+      "test": "Login with Valid Credentials",
+      "success": true,
+      "details": "Status: 200, Response: {\"id\":\"69df1653669c72f513a8f253\",\"email\":\"admin@example.com\",\"name\":\"Admin\",\"role\":\"admin\",\"created_"
+    },
+    {
+      "test": "Login with Invalid Credentials",
+      "success": true,
+      "details": "Status: 401"
+    },
+    {
+      "test": "Auth Me (Authenticated)",
+      "success": true,
+      "details": "Status: 200"
+    },
+    {
+      "test": "Auth Me (Unauthenticated)",
+      "success": true,
+      "details": "Status: 401"
+    },
+    {
+      "test": "Logout",
+      "success": true,
+      "details": "Logout Status: 200, Me Status: 401"
+    },
+    {
+      "test": "Register New User",
+      "success": true,
+      "details": "Status: 200, Email: test_044051@example.com"
+    },
+    {
+      "test": "Register Duplicate Email",
+      "success": true,
+      "details": "Status: 400"
+    },
+    {
+      "test": "Brute Force Protection",
+      "success": false,
+      "details": "No lockout after 6 attempts"
+    }
+  ]
+}
