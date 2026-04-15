@@ -1,0 +1,98 @@
+{
+  "theme": "light",
+  "archetype": "4 (Swiss & High-Contrast)",
+  "vibe": "Objective, rigid, functional, ultra-premium SaaS",
+  "design_philosophy": "A top 1% modern SaaS login experience. It avoids generic 'startup' templates by utilizing a rigid split-screen Swiss layout, aggressive typography, and stark contrasts. Color is used strictly for function, and negative space is maximized.",
+  "colors": {
+    "background": {
+      "primary": "#FFFFFF",
+      "secondary": "#FAFAFA",
+      "inverse": "#0A0A0A"
+    },
+    "surface": {
+      "default": "#FFFFFF",
+      "muted": "#F4F4F5",
+      "input": "#F4F4F5"
+    },
+    "text": {
+      "primary": "#0A0A0A",
+      "secondary": "#52525B",
+      "inverse": "#FFFFFF",
+      "error": "#E11D48"
+    },
+    "brand": {
+      "primary": "#002FA7",
+      "accent": "#000000"
+    },
+    "border": {
+      "default": "#E4E4E7",
+      "focus": "#0A0A0A"
+    }
+  },
+  "typography": {
+    "primary_font": "Outfit",
+    "secondary_font": "Satoshi",
+    "hierarchy": {
+      "h1": "text-4xl sm:text-5xl font-medium tracking-tight",
+      "h2": "text-2xl sm:text-3xl font-medium tracking-tight",
+      "h3": "text-xl font-medium",
+      "body": "text-base text-zinc-600 leading-relaxed",
+      "label": "text-sm font-medium tracking-wide text-zinc-900 uppercase",
+      "small": "text-xs text-zinc-500"
+    }
+  },
+  "layout_and_spacing": {
+    "container": "Split-screen layout: 100vh. Left side (Form) 40% width. Right side (Visuals) 60% width. On mobile, stack vertically with visual side hidden or reduced to a minimal banner.",
+    "spacing_scale": "Generous. Form container should have p-12 md:p-24. Elements within the form should have gap-6 or gap-8.",
+    "border_radius": "rounded-none (Strictly sharp edges for a Swiss/Brutalist modern feel)",
+    "shadows": "No shadows. Use 1px solid borders (border-zinc-200) for separation if needed."
+  },
+  "components": {
+    "login_form": {
+      "wrapper": "flex flex-col justify-center h-full max-w-md mx-auto w-full",
+      "header": "mb-10 space-y-2",
+      "inputs": "bg-zinc-100 border-none rounded-none h-14 px-4 text-base transition-colors hover:bg-zinc-200 focus:bg-white focus:ring-2 focus:ring-black focus:outline-none placeholder:text-zinc-400",
+      "button": "bg-black text-white rounded-none h-14 font-medium text-base hover:bg-zinc-800 transition-all flex items-center justify-center gap-2 group w-full",
+      "oauth_button": "bg-white border border-zinc-200 text-black rounded-none h-14 font-medium hover:bg-zinc-50 transition-colors flex items-center justify-center gap-3 w-full",
+      "divider": "flex items-center gap-4 my-8 text-sm text-zinc-400 before:flex-1 before:h-px before:bg-zinc-200 after:flex-1 after:h-px after:bg-zinc-200"
+    },
+    "visual_side": {
+      "wrapper": "hidden lg:block relative w-full h-full bg-zinc-100 overflow-hidden",
+      "overlay": "absolute inset-0 bg-black/20 mix-blend-multiply",
+      "quote_box": "absolute bottom-12 left-12 right-12 text-white z-10",
+      "quote_text": "text-3xl font-medium tracking-tight leading-snug mb-4",
+      "quote_author": "text-sm font-medium tracking-widest uppercase opacity-80"
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "Buttons must have distinct hover backgrounds. Use group-hover on the submit button to translate an embedded arrow icon rightwards (translate-x-1).",
+    "focus_states": "Inputs must have a sharp 2px black focus ring.",
+    "page_load": "Staggered fade-up for form elements (header, oauth, divider, email input, password input, submit). Use Framer Motion."
+  },
+  "media_assets": {
+    "images": [
+      {
+        "category": "hero_background",
+        "url": "https://images.pexels.com/photos/28302486/pexels-photo-28302486.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=1500&w=1000",
+        "description": "Minimalist architectural design showcasing geometric shapes. Serves as the high-contrast backdrop for the right-side split screen.",
+        "placement": "visual_side container"
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "usage": "Use ArrowRight for submit button, Chrome/Github for OAuth, Eye/EyeOff for password toggle."
+    }
+  },
+  "instructions_to_main_agent": [
+    "Install `lucide-react` for icons and `framer-motion` for page load animations.",
+    "Implement a split-screen layout (lg:grid-cols-[2fr_3fr] or 40/60 split).",
+    "The left side must be pure white (#FFFFFF) housing the login form. The right side contains the abstract image with an overlay and a typographic quote.",
+    "Use strict rounded-none for all inputs and buttons to match the Swiss design archetype.",
+    "Input fields should be borderless with a light gray background (bg-zinc-100), transitioning to white with a 2px black ring on focus.",
+    "Ensure the JWT auth flow is functional: mock an API or implement a basic frontend validation that stores a fake token in localStorage and redirects to a simple '/dashboard' on success.",
+    "Include 'Email' and 'Password' fields, 'Sign In' button, and 'Continue with Google' OAuth button.",
+    "Show a clear error state (red text, red input border) if login fails.",
+    "Include `data-testid` attributes on all interactive elements (e.g., `data-testid=\"login-email-input\"`).",
+    "Do not use Shadcn card components; build the layout natively with Tailwind to ensure exact spacing and sharp edges."
+  ]
+}
