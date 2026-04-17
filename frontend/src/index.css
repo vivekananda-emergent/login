@@ -14,4 +14,7 @@
   h1, h2, h3, h4, h5, h6 {
     @apply font-['Outfit',sans-serif];
   }
+  #emergent-badge {
+    display: none !important;
+  }
 }
