@@ -15,6 +15,7 @@ from datetime import datetime, timezone, timedelta
 import bcrypt
 import jwt
 import secrets
+import httpx
 
 ROOT_DIR = Path(__file__).parent
 
@@ -53,8 +54,27 @@ def create_refresh_token(user_id: str) -> str:
     payload = {"sub": user_id, "exp": datetime.now(timezone.utc) + timedelta(days=7), "type": "refresh"}
     return jwt.encode(payload, get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
-# Auth Helper
+# Auth Helper - supports both JWT and Emergent session tokens
 async def get_current_user(request: Request) -> dict:
+    # Check for Emergent session token first
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        session = await db.user_sessions.find_one({"session_token": session_token}, {"_id": 0})
+        if session:
+            expires_at = session["expires_at"]
+            if isinstance(expires_at, str):
+                expires_at = datetime.fromisoformat(expires_at)
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            if expires_at < datetime.now(timezone.utc):
+                raise HTTPException(status_code=401, detail="Session expired")
+            
+            user = await db.users.find_one({"user_id": session["user_id"]}, {"_id": 0})
+            if not user:
+                raise HTTPException(status_code=401, detail="User not found")
+            return user
+    
+    # Fallback to JWT token
     token = request.cookies.get("access_token")
     if not token:
         auth_header = request.headers.get("Authorization", "")
@@ -62,6 +82,7 @@ async def get_current_user(request: Request) -> dict:
             token = auth_header[7:]
     if not token:
         raise HTTPException(status_code=401, detail="Not authenticated")
+    
     try:
         payload = jwt.decode(token, get_jwt_secret(), algorithms=[JWT_ALGORITHM])
         if payload.get("type") != "access":
@@ -93,6 +114,9 @@ class UserResponse(BaseModel):
     name: str
     role: str
     created_at: str
+
+class SessionRequest(BaseModel):
+    session_id: str
 
 class RefreshRequest(BaseModel):
     pass
@@ -137,6 +161,85 @@ async def record_failed_login(identifier: str) -> None:
 async def clear_failed_login(identifier: str) -> None:
     await db.login_attempts.delete_one({"identifier": identifier})
 
+# Emergent Auth Session Endpoint
+@api_router.post("/auth/session")
+async def create_session(request: SessionRequest, response: Response):
+    """Exchange session_id for user data and create session"""
+    try:
+        async with httpx.AsyncClient() as client:
+            emergent_response = await client.get(
+                "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data",
+                headers={"X-Session-ID": request.session_id},
+                timeout=10.0
+            )
+            
+            if emergent_response.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid session ID")
+            
+            user_data = emergent_response.json()
+            
+            # Check if user exists
+            existing_user = await db.users.find_one({"email": user_data["email"]}, {"_id": 0})
+            
+            if existing_user:
+                user_id = existing_user["user_id"]
+                # Update user info if needed
+                await db.users.update_one(
+                    {"user_id": user_id},
+                    {"$set": {
+                        "name": user_data["name"],
+                        "picture": user_data.get("picture"),
+                        "updated_at": datetime.now(timezone.utc)
+                    }}
+                )
+            else:
+                # Create new user with custom user_id
+                user_id = f"user_{uuid.uuid4().hex[:12]}"
+                await db.users.insert_one({
+                    "user_id": user_id,
+                    "email": user_data["email"],
+                    "name": user_data["name"],
+                    "picture": user_data.get("picture"),
+                    "role": "user",
+                    "created_at": datetime.now(timezone.utc)
+                })
+            
+            # Store session in database
+            session_token = user_data["session_token"]
+            await db.user_sessions.insert_one({
+                "user_id": user_id,
+                "session_token": session_token,
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+                "created_at": datetime.now(timezone.utc)
+            })
+            
+            # Set httpOnly cookie
+            response.set_cookie(
+                key="session_token",
+                value=session_token,
+                httponly=True,
+                secure=True,
+                samesite="none",
+                max_age=7*24*60*60,
+                path="/"
+            )
+            
+            # Get user data to return
+            user = await db.users.find_one({"user_id": user_id}, {"_id": 0})
+            
+            return {
+                "user_id": user["user_id"],
+                "email": user["email"],
+                "name": user["name"],
+                "role": user["role"],
+                "created_at": user["created_at"].isoformat()
+            }
+            
+    except httpx.RequestError as e:
+        raise HTTPException(status_code=500, detail="Failed to connect to auth service")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Auth Endpoints
 @api_router.post("/auth/register", response_model=UserResponse)
 async def register(request: RegisterRequest, response: Response):
@@ -163,7 +266,7 @@ async def register(request: RegisterRequest, response: Response):
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
     
     return UserResponse(
-        id=user_id,
+        user_id=user_id,
         email=email,
         name=request.name,
         role="user",
@@ -192,7 +295,7 @@ async def login(request: LoginRequest, response: Response, req: Request):
     response.set_cookie(key="refresh_token", value=refresh_token, httponly=True, secure=False, samesite="lax", max_age=604800, path="/")
     
     return UserResponse(
-        id=user_id,
+        user_id=user_id,
         email=user["email"],
         name=user["name"],
         role=user["role"],
@@ -200,20 +303,28 @@ async def login(request: LoginRequest, response: Response, req: Request):
     )
 
 @api_router.post("/auth/logout")
-async def logout(response: Response):
+async def logout(response: Response, request: Request):
+    # Clear JWT cookies
     response.delete_cookie(key="access_token", path="/")
     response.delete_cookie(key="refresh_token", path="/")
+    
+    # Clear Emergent session
+    session_token = request.cookies.get("session_token")
+    if session_token:
+        await db.user_sessions.delete_one({"session_token": session_token})
+        response.delete_cookie(key="session_token", path="/")
+    
     return {"message": "Logged out successfully"}
 
-@api_router.get("/auth/me", response_model=UserResponse)
+@api_router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    return UserResponse(
-        id=user["_id"],
-        email=user["email"],
-        name=user["name"],
-        role=user["role"],
-        created_at=user["created_at"].isoformat()
-    )
+    return {
+        "user_id": user.get("user_id") or user.get("_id"),
+        "email": user["email"],
+        "name": user["name"],
+        "role": user["role"],
+        "created_at": user["created_at"].isoformat()
+    }
 
 @api_router.post("/auth/refresh")
 async def refresh(request: Request, response: Response):
@@ -313,13 +424,17 @@ async def seed_admin():
     memory_dir.mkdir(exist_ok=True)
     with open(memory_dir / "test_credentials.md", "w") as f:
         f.write("# Test Credentials\n\n")
-        f.write("## Admin Account\n")
+        f.write("## Admin Account (JWT Auth)\n")
         f.write(f"- Email: {admin_email}\n")
         f.write(f"- Password: {admin_password}\n")
         f.write(f"- Role: admin\n\n")
+        f.write("## Google OAuth (Emergent Auth)\n")
+        f.write("- Use any valid Google account\n")
+        f.write("- First login creates new user\n\n")
         f.write("## Auth Endpoints\n")
-        f.write("- POST /api/auth/register\n")
-        f.write("- POST /api/auth/login\n")
+        f.write("- POST /api/auth/register (JWT)\n")
+        f.write("- POST /api/auth/login (JWT)\n")
+        f.write("- POST /api/auth/session (Google OAuth)\n")
         f.write("- POST /api/auth/logout\n")
         f.write("- GET /api/auth/me\n")
         f.write("- POST /api/auth/refresh\n")
@@ -329,6 +444,9 @@ async def seed_admin():
 # MongoDB Indexes
 async def create_indexes():
     await db.users.create_index("email", unique=True)
+    await db.users.create_index("user_id", unique=True, sparse=True)
+    await db.user_sessions.create_index("session_token")
+    await db.user_sessions.create_index("user_id")
     await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
     await db.login_attempts.create_index("identifier")
     print("MongoDB indexes created")
